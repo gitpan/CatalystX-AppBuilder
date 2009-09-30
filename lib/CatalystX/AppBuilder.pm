@@ -2,7 +2,7 @@ package CatalystX::AppBuilder;
 use Moose;
 use namespace::clean -except => qw(meta);
 
-our $VERSION = '0.00001';
+our $VERSION = '0.00002';
 
 has appname => (
     is => 'ro',
@@ -50,7 +50,7 @@ has plugins => (
 );
 
 sub _build_version      { '0.00001' }
-sub _build_superclasses { }
+sub _build_superclasses { [ 'Catalyst' ] }
 sub _build_config {
     my $self = shift;
     my %config = (
@@ -61,7 +61,7 @@ sub _build_config {
 
 sub _build_plugins {
     my $self = shift;
-    my @plugins = ();
+    my @plugins = qw(ConfigLoader);
     if ($self->debug) {
         unshift @plugins, '-Debug';
     }
@@ -74,24 +74,21 @@ sub BUILD {
     my $appname = $self->appname;
     my $meta = Moose::Util::find_meta( $appname );
     if (! $meta || ! $appname->isa('Catalyst') ) {
-        my %config = ( version => $self->version );
-        if (my $superclasses = $self->superclasses) {
-            foreach my $class (reverse @$superclasses) {
-                if (! Class::MOP::is_class_loaded($class)) {
-                    Class::MOP::load_class($class);
-                }
-            }
-            $config{superclasses} = $superclasses;
+        if ($self->debug) {
+            print STDERR "Defining $appname via " . (blessed $self) . "\n";
         }
-
-        $meta = Moose::Meta::Class->create( $appname => %config );
+        $meta = Moose::Meta::Class->create(
+            $appname => (
+                version => $self->version,
+                superclasses => $self->superclasses
+            )
+        );
 
         if ($appname->isa('Catalyst')) {
             # Don't let the base class fool us!
             delete $appname->config->{home};
             delete $appname->config->{root};
         }
-
         # Fugly, I know, but we need to load Catalyst in the app's namespace
         # for manythings to take effect.
         eval <<"        EOCODE";
@@ -99,18 +96,29 @@ sub BUILD {
             use Catalyst;
         EOCODE
         die if $@;
+
     }
     return $meta;
 }
 
 sub bootstrap {
     my $self = shift;
+    my $runsetup = shift;
     my $appclass = $self->appname;
     $appclass->config( $self->config );
 
     my $caller = caller(1);
-    if ($caller eq 'main' || $ENV{HARNESS_ACTIVE}) {
-        $appclass->setup( @{ $self->plugins || [] } );
+    if ($runsetup || (defined $caller && $caller eq 'main') || $ENV{HARNESS_ACTIVE}) {
+        my @plugins;
+        my %plugins;
+        foreach my $plugin (@{ $self->plugins }) {
+            if ($plugins{$plugin}++) {
+                warn "$plugin appeaars multiple times in the plugin list! Ignoring...";
+            } else {
+                push @plugins, $plugin;
+            }
+        }
+        $appclass->setup( @plugins );
     }
 }
 
@@ -165,9 +173,10 @@ WARNING: YMMV regarding this module.
 This module gives you a programatic interface to I<configuring> Catalyst
 applications.
 
-The main motivation to write this module is this: to write reusable Catalyst
-appllications. For instance, if you build your MyApp::Base, you might want to
-I<mostly> use MyApp::Base, but you may want to add or remove a plugin or two.
+The main motivation to write this module is: to write reusable Catalyst
+appllications. For instance, if you build your MyApp::Base and you wanted to
+create a new application afterwards that is I<mostly> like MyApp::Base, 
+but slightly tweaked. Perhaps you want to add or remove a plugin or two.
 Perhaps you want to tweak just a single parameter.
 
 Traditionally, your option then was to use catalyst.pl and create another
@@ -211,24 +220,38 @@ app like so:
 
 =head2 DEFINING YOUR CatalystX::AppBuilder SUBCLASS
 
-You can also create a subclass of CatalystX::AppBuilder, say, MyApp::Builder:
+The originally intended approach to using this module is to create a
+subclass of CatalystX::AppBuilder and configure it to your own needs,
+and then keep reusing it.
+
+To build your own MyApp::Builder, you just need to subclass it:
 
     package MyApp::Builder;
     use Moose;
 
     extends 'CatalystX::AppBuilder';
 
-This will give you the ability to give it defaults to the various configuration
+Then you will be able to give it defaults to the various configuration
 parameters:
 
     override _build_config => sub {
         my $config = super(); # Get what CatalystX::AppBuilder gives you
         $config->{ SomeComponent } = { ... };
+        return $config;
     };
 
     override _build_plugins => sub {
         my $plugins = super(); # Get what CatalystX::AppBuilder gives you
-        push @$plugins, "MyPlugin1", "MyPlugin2";
+
+        push @$plugins, qw(
+            Unicode
+            Authentication
+            Session
+            Session::Store::File
+            Session::State::Cookie
+        );
+
+        return $plugins;
     };
 
 Then you can simply do this instead of giving parameters to 
@@ -238,10 +261,10 @@ CatalystX::AppBuilder every time:
     use MyApp::Builder;
     MyApp::Builder->new()->bootstrap();
 
-=head2 EXTENDING A CATALYST APP USING 
+=head2 EXTENDING A CATALYST APP USING CatalystX::AppBuilder
 
 Once you created your own MyApp::Builder, you can keep inheriting it to 
-create custom Builders which in turn create custom Catalyst applications:
+create custom Builders which in turn create more custom Catalyst applications:
 
     package MyAnotherApp::Builder;
     use Moose;
@@ -328,12 +351,32 @@ The config hash to give to the Catalyst application.
 
 The list of plugins to give to the Catalyst application.
 
+=head1 METHODS
+
+=head2 bootstrap($runsetup)
+
+Bootstraps the Catalyst app.
+
+=head2 inherited_path_to(@pathspec)
+
+Calls path_to() on all Catalyst applications in the inheritance tree.
+
+=head2 app_path_to(@pathspec);
+
+Calls path_to() on the curent Catalyst application.
+
 =head1 TODO
 
 Documentation. Samples. Tests.
 
 =head1 AUTHOR
 
-Daisuke Maki - C<< <daisuke@endeworks.jp> >>
+Daisuke Maki C<< <daisuke@endeworks.jp> >>
 
+=head1 LICENSE
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+See http://www.perl.com/perl/misc/Artistic.html
 =cut
