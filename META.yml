@@ -19,10 +19,10 @@ no_index:
     - inc
     - t
 requires:
-  Catalyst: 0
+  Catalyst: 5.80015
   Moose: 0
   namespace::clean: 0
 resources:
   license: http://dev.perl.org/licenses/
   repository: git://github.com/lestrrat/CatalystX-AppBuilder.git
-version: 0.00003
+version: 0.00004
