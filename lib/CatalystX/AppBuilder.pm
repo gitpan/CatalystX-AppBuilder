@@ -2,7 +2,7 @@ package CatalystX::AppBuilder;
 use Moose;
 use namespace::clean -except => qw(meta);
 
-our $VERSION = '0.00006';
+our $VERSION = '0.00007';
 
 has appname => (
     is => 'ro',
@@ -141,7 +141,6 @@ sub bootstrap {
             }
         }
         $appclass->config( $self->config );
-warn "HERE";
         $appclass->setup( @plugins );
     }
 }
