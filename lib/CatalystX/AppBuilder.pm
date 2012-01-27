@@ -2,7 +2,7 @@ package CatalystX::AppBuilder;
 use Moose;
 use namespace::clean -except => qw(meta);
 
-our $VERSION = '0.00008';
+our $VERSION = '0.00009';
 
 has appname => (
     is => 'ro',
@@ -171,6 +171,7 @@ sub inherited_path_to {
                $f = $f->subdir(@paths)->stringify;
                last;
            }
+           last if $f->stringify eq $f->parent->stringify;
            $f = $f->parent;
         }
         $f;
